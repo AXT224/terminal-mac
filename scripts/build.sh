@@ -6,12 +6,14 @@ if [[ "$(uname -m)" != arm64 ]]; then
   exit 1
 fi
 configuration="${CONFIGURATION:-release}"
+source scripts/release-config.sh
 identity="${SIGN_IDENTITY:-}"
 # A stable identity keeps the guest helper's Screen Recording and Accessibility approvals across
 # updates; ad-hoc signatures change with every build. SIGN_IDENTITY=- forces ad-hoc signing.
 if [[ -z "$identity" ]]; then
-  identity="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development: .*\)"$/\1/p' | head -1)"
-  identity="${identity:--}"
+  if security find-identity -p codesigning 2>/dev/null | grep -qF "\"$SIGNING_NAME\""; then identity="$SIGNING_NAME"
+  else identity=-; echo "No \"$SIGNING_NAME\" identity; signing ad-hoc. Run scripts/create-signing-identity.sh to keep guest permissions across updates." >&2
+  fi
 fi
 echo "Signing with: $identity"
 version="${VERSION:-0.2.0}"
@@ -20,8 +22,12 @@ if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$build_number" =~ ^[1-9][0-
   echo 'VERSION must be x.y.z and BUILD_NUMBER a positive integer.' >&2
   exit 1
 fi
-sign_options=(--timestamp=none)
-if [[ "$identity" != - ]]; then sign_options=(--options runtime --timestamp); fi
+# Only Apple-issued certificates get a secure timestamp; it is required for notarization.
+case "$identity" in
+  -) sign_options=(--timestamp=none) ;;
+  'Developer ID Application: '*) sign_options=(--options runtime --timestamp) ;;
+  *) sign_options=(--options runtime --timestamp=none) ;;
+esac
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$CLANG_MODULE_CACHE_PATH"
 build_options=(--disable-sandbox --cache-path "$PWD/.build/cache" --config-path "$PWD/.build/configuration" --security-path "$PWD/.build/security")

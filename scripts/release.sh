@@ -2,26 +2,34 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/release-config.sh
-mode=production
+# public (default): self-signed with SIGNING_NAME, for Homebrew and curl. No Apple account involved.
+# --local: ad-hoc signed test package. --notarized: Developer ID signed and notarized by Apple; the
+# certificate carries the developer's legal name, so it is not the default.
+mode=public
 case "${1:-}" in
   --local) mode=local; shift ;;
-  --signed-local) mode=signed-local; shift ;;
-  --help|-h) echo 'Usage: [VERSION=x.y.z BUILD_NUMBER=N] bash scripts/release.sh [--local|--signed-local]'; echo 'Production requires SIGN_IDENTITY (Developer ID Application) and NOTARY_PROFILE.'; exit 0 ;;
+  --notarized) mode=notarized; shift ;;
+  --help|-h) echo 'Usage: [VERSION=x.y.z BUILD_NUMBER=N] bash scripts/release.sh [--local|--notarized]'; exit 0 ;;
 esac
 [[ $# -eq 0 ]] || { echo 'Unexpected arguments. Use --help.' >&2; exit 1; }
 export VERSION="${VERSION:-0.2.0}" BUILD_NUMBER="${BUILD_NUMBER:-4}"
-if [[ "$mode" != local ]]; then
-  [[ "${SIGN_IDENTITY:-}" = 'Developer ID Application: '* ]] || { echo 'Set SIGN_IDENTITY to your Developer ID Application certificate.' >&2; exit 1; }
-  if [[ "$mode" = production ]]; then
-    [[ -n "${NOTARY_PROFILE:-}" ]] || { echo 'Set NOTARY_PROFILE to a configured notarytool Keychain profile.' >&2; exit 1; }
-  fi
-else
-  export SIGN_IDENTITY=-
-fi
+case "$mode" in
+  local) export SIGN_IDENTITY=- ;;
+  public)
+    export SIGN_IDENTITY="${SIGN_IDENTITY:-$SIGNING_NAME}"
+    security find-identity -p codesigning | grep -qF "\"$SIGN_IDENTITY\"" || { echo "No \"$SIGN_IDENTITY\" identity. Run scripts/create-signing-identity.sh, or restore your backup of it." >&2; exit 1; } ;;
+  notarized)
+    if [[ -z "${SIGN_IDENTITY:-}" ]]; then
+      SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -1)"
+    fi
+    export SIGN_IDENTITY
+    [[ "$SIGN_IDENTITY" = 'Developer ID Application: '* ]] || { echo 'Set SIGN_IDENTITY to your Developer ID Application certificate.' >&2; exit 1; }
+    [[ -n "${NOTARY_PROFILE:-}" ]] || { echo 'Set NOTARY_PROFILE to a configured notarytool Keychain profile.' >&2; exit 1; } ;;
+esac
 bash scripts/build.sh
 output="$PWD/dist/releases"
 mkdir -p "$output"
-suffix=""; if [[ "$mode" != production ]]; then suffix="-$mode"; fi
+suffix=""; if [[ "$mode" = local ]]; then suffix="-local"; fi
 name="terminal-mac-$VERSION-$BUILD_NUMBER-macos-arm64$suffix"
 archive="$output/$name.zip"
 [[ ! -e "$archive" && ! -e "$archive.sha256" ]] || { echo "Release already exists: $archive. Increment BUILD_NUMBER; releases are immutable." >&2; exit 1; }
@@ -29,7 +37,7 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/terminal-mac-release.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 payload="$work/$name"; mkdir -p "$payload"
 ditto dist/TerminalMac.app "$payload/TerminalMac.app"
-if [[ "$mode" = production ]]; then
+if [[ "$mode" = notarized ]]; then
   # Both independent apps need stapled tickets: the guest app is copied out on setup.
   guest="$payload/TerminalMac.app/Contents/Resources/guest-tools/TerminalMacGuest.app"
   ditto -c -k --sequesterRsrc --keepParent "$guest" "$work/guest.zip"
@@ -64,7 +72,6 @@ The guest has separate apps/accounts/files. VM data remains in your user
 Library/Application Support/terminal-mac folder across CLI updates.
 TEXT
 if [[ "$mode" = local ]]; then echo 'LOCAL TEST BUILD: ad-hoc signed, not notarized; not a public release.' >> "$payload/README.txt"; fi
-if [[ "$mode" = signed-local ]]; then echo 'SIGNED RELEASE CANDIDATE: Developer ID signed, not notarized; not a public release.' >> "$payload/README.txt"; fi
 ditto -c -k --sequesterRsrc --keepParent "$payload" "$archive"
 (cd "$output" && shasum -a 256 "$name.zip" > "$name.zip.sha256")
 echo "Packaged ($mode): $archive"

@@ -30,7 +30,7 @@ The installer places one launcher in `~/.local/bin` and the bundled runtime unde
 
 Running `terminal-mac` in an interactive terminal starts the guided flow. `terminal-mac up` does the same explicitly. It automatically downloads/caches a compatible Apple restore image, installs a virtual Mac, boots it and checks the guest helper. Later runs reuse the existing VM and reconnect. Unsupported terminals get the native desktop window.
 
-**Current status:** a signed local release candidate is available; Apple notarization and live guest acceptance remain pending. It is not yet a validated public production release. There is no public download URL or hosted installer yet.
+**Current status:** early release candidate. Releases are self-signed (no Apple notarization), which Homebrew and curl installs don't need. Live guest acceptance on a clean Mac is still pending.
 
 ## Use with agents
 
@@ -80,9 +80,9 @@ bash scripts/build.sh
 ./dist/terminal-mac doctor
 ```
 
-The build creates an ad-hoc signed `dist/TerminalMac.app`, including `TerminalMacGuest.app`, and the `dist/terminal-mac` launcher. Virtualization needs the host executable's `com.apple.security.virtualization` entitlement; use the packaged launcher instead of the unsigned Swift build product.
+The build creates `dist/TerminalMac.app`, including `TerminalMacGuest.app`, and the `dist/terminal-mac` launcher. Virtualization needs the host executable's `com.apple.security.virtualization` entitlement; use the packaged launcher instead of the unsigned Swift build product.
 
-For stable permissions across guest helper rebuilds, set `SIGN_IDENTITY` to your signing identity. Ad-hoc signatures may need guest permissions granted again after a rebuild. [RELEASING.md](RELEASING.md) documents local packages and the Developer ID signing/notarization pipeline.
+It is signed with the self-signed "Govijr Code Signing" identity when your keychain has it (`bash scripts/create-signing-identity.sh` makes one), and ad-hoc otherwise. A stable identity keeps the guest helper's permissions across rebuilds; ad-hoc builds need them granted again. [RELEASING.md](RELEASING.md) covers signing and publishing.
 
 ## Create your first Mac
 
@@ -115,7 +115,7 @@ On the host:
 
 The viewer supports typing, left/right clicks, double and triple clicks, dragging, scrolling, arrows and common control keys. **Ctrl+G** opens a palette of Mac shortcuts (Spotlight, Mission Control, copy/paste, close/quit and more), because terminals keep ⌘ for themselves. **Ctrl+]** exits the viewer while the VM keeps running. Closing the native VM window hides it and also leaves the VM running.
 
-The guest helper keeps a ScreenCaptureKit stream open while a viewer is watching. It sends a frame only when the screen changes (up to 30 fps), already sized to the pixels the terminal draws, as lossless lz4-compressed pixels. Kitty and Ghostty receive those frames through shared memory rather than the pty. An idle desktop costs nothing, and the stream stops 15 seconds after the viewer leaves. From build 4 on, the guest helper updates itself: within 30 seconds of a newer build appearing in the shared tools folder, it installs that build and relaunches. Helpers from build 3 and earlier still work but poll full screenshots, and the header shows "snapshots". Update those once by opening `/Volumes/My Shared Files/tools/TerminalMacGuest.app` in the guest. `scripts/build.sh` signs with your first Apple Development identity when `SIGN_IDENTITY` is unset, so the guest keeps its Screen Recording and Accessibility approvals across updates. Ad-hoc builds (`SIGN_IDENTITY=-`) need them granted again after each update.
+The guest helper keeps a ScreenCaptureKit stream open while a viewer is watching. It sends a frame only when the screen changes (up to 30 fps), already sized to the pixels the terminal draws, as lossless lz4-compressed pixels. Kitty and Ghostty receive those frames through shared memory rather than the pty. An idle desktop costs nothing, and the stream stops 15 seconds after the viewer leaves. From build 4 on, the guest helper updates itself: within 30 seconds of a newer build appearing in the shared tools folder, it installs that build and relaunches. Helpers from build 3 and earlier still work but poll full screenshots, and the header shows "snapshots". Update those once by opening `/Volumes/My Shared Files/tools/TerminalMacGuest.app` in the guest. Releases are signed with one unchanging self-signed certificate, so the guest keeps its Screen Recording and Accessibility approvals across updates.
 
 Agents can drive the guest through an MCP server: `claude mcp add terminal-mac -- "$PWD/dist/terminal-mac" mcp default`. See [docs/AGENT.md](docs/AGENT.md).
 
