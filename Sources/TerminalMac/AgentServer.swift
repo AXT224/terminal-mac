@@ -46,7 +46,6 @@ final class AgentServer {
     ]
 
     func run() async throws {
-        _ = try store.load(name)
         for try await line in FileHandle.standardInput.bytes.lines {
             guard let data = line.data(using: .utf8), let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 send(["jsonrpc": "2.0", "id": NSNull(), "error": ["code": -32700, "message": "Parse error"]]); continue
@@ -59,7 +58,7 @@ final class AgentServer {
                 send(["jsonrpc": "2.0", "id": id, "result": [
                     "protocolVersion": params["protocolVersion"] as? String ?? "2025-06-18",
                     "capabilities": ["tools": [:]],
-                    "serverInfo": ["name": "terminal-mac", "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0"],
+                    "serverInfo": ["name": "terminal-mac", "version": appVersion],
                     "instructions": Self.instructions]])
             case "ping": send(["jsonrpc": "2.0", "id": id, "result": [:]])
             case "tools/list": send(["jsonrpc": "2.0", "id": id, "result": ["tools": Self.tools]])
@@ -118,6 +117,7 @@ final class AgentServer {
     /// A point-sized screenshot, so image pixels are the coordinates the other tools take.
     /// JPEG keeps the message small; the model sees the same detail at this size.
     private func screenshot() async throws -> [[String: Any]] {
+        try requireRunning()
         let mailbox = try exchange()
         let request = Request(action: "screenshot", timeout: 15)
         let imageName = "image-\(request.id.uuidString).png"
@@ -137,9 +137,16 @@ final class AgentServer {
 
     private func exchange() throws -> Mailbox { try Mailbox(store.directory(name).appendingPathComponent("exchange")) }
     private func guest(_ request: Request, mailbox: Mailbox? = nil) async throws -> Reply {
+        try requireRunning()
+        return try await (mailbox ?? exchange()).call(request)
+    }
+    /// Checked per call, so the server starts (and lists its tools) before any VM exists.
+    private func requireRunning() throws {
+        guard (try? store.load(name)) != nil else {
+            throw Failure("No virtual Mac named '\(name)' exists yet. Ask the user to run `terminal-mac up\(name == "default" ? "" : " " + name)`; it downloads macOS and needs them for first-time setup.")
+        }
         let directory = try store.directory(name)
         guard CLI.isRunning(directory) else { throw Failure("VM '\(name)' is stopped. Ask the user to run: terminal-mac start \(name)") }
-        return try await (mailbox ?? exchange()).call(request)
     }
     private func explain(_ error: Error) -> String {
         if let timeout = error as? MailboxTimeout, !timeout.pickedUp {

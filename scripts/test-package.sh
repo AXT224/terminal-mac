@@ -11,7 +11,9 @@ prefix="$work/prefix with spaces"
 bash "$installer" --prefix "$prefix"
 bash "$installer" --prefix "$prefix"
 launcher="$prefix/bin/terminal-mac"
-"$launcher" --version
+# The version must come from the installed bundle, not a fallback.
+expected="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$(dirname "$installer")/TerminalMac.app/Contents/Info.plist")"
+[[ "$("$launcher" --version)" == "terminal-mac $expected" ]] || { echo "Version mismatch: $("$launcher" --version), expected $expected" >&2; exit 1; }
 TERMINAL_MAC_HOME="$work/unused-data" "$launcher" up test --plan > "$work/plan.json"
 [[ ! -e "$work/unused-data" ]] || { echo 'Plan unexpectedly created VM data.' >&2; exit 1; }
 python3 - "$work/plan.json" <<'PY'
@@ -27,8 +29,8 @@ else
   if "$launcher" guest --check > "$work/guard.log" 2>&1; then echo 'Guest guard unexpectedly allowed the physical host.' >&2; exit 1; fi
   grep -q 'only runs inside a virtual Mac' "$work/guard.log"
 fi
-"$launcher" skills get | grep -q '^name: terminal-mac$'
-printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | "$launcher" mcp | grep -q '"screenshot"'
+TERMINAL_MAC_HOME="$work/unused-data" "$launcher" skills get | grep -q '^name: terminal-mac$'
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | TERMINAL_MAC_HOME="$work/unused-data" "$launcher" mcp | grep -q '"screenshot"'
 if "$launcher" up ../escape --plan > "$work/name.log" 2>&1; then echo 'Invalid machine name was accepted.' >&2; exit 1; fi
 conflict="$work/conflict"
 mkdir -p "$conflict/bin"

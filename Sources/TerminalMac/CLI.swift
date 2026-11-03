@@ -21,7 +21,7 @@ final class CLI {
         let tail = Array(input.dropFirst())
         switch command {
         case "help", "--help", "-h": print(Self.help)
-        case "--version", "version": print("terminal-mac \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0")")
+        case "--version", "version": print("terminal-mac \(appVersion)")
         case "up", "setup": try await up(tail)
         case "doctor":
             _ = try Arguments(tail)
@@ -275,6 +275,14 @@ final class CLI {
     TERMINAL_MAC_HOME overrides the host data directory.
     """
 }
+
+/// The app bundle around the running executable. Bundle.main cannot find it when the CLI is
+/// started through the installer's symlink, so versions would fall back to a guess.
+let appBundle: Bundle = {
+    let executable = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).standardizedFileURL.resolvingSymlinksInPath()
+    return Bundle(url: executable.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()) ?? Bundle.main
+}()
+var appVersion: String { appBundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev" }
 
 func printJSON(_ value: [String: String]) throws {
     let data = try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys])
