@@ -213,7 +213,7 @@ final class CLI {
         }
         return nil
     }
-    /// How the user invoked us, before symlinks: Homebrew's or the installer's stable launcher.
+    /// How the user invoked us, before symlinks: the installer's stable launcher.
     var launcherPath: String {
         let invoked = CommandLine.arguments[0]
         if invoked.contains("/") { return URL(fileURLWithPath: invoked).standardizedFileURL.path }

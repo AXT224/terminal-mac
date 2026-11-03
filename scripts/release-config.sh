@@ -6,5 +6,5 @@
 export SIGNING_NAME="${SIGNING_NAME:-Govijr Code Signing}"
 # Only for `release.sh --notarized`: a notarytool profile from `xcrun notarytool store-credentials PROFILE`.
 export NOTARY_PROFILE="${NOTARY_PROFILE:-}"
-# GitHub repository (owner/name) that hosts releases; the tap is owner/homebrew-tap.
+# GitHub repository (owner/name) that hosts releases.
 export GITHUB_REPO="${GITHUB_REPO:-govijr/terminal-mac}"

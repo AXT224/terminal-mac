@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/release-config.sh
-# public (default): self-signed with SIGNING_NAME, for Homebrew and curl. No Apple account involved.
+# public (default): self-signed with SIGNING_NAME, for the curl installer. No Apple account involved.
 # --local: ad-hoc signed test package. --notarized: Developer ID signed and notarized by Apple; the
 # certificate carries the developer's legal name, so it is not the default.
 mode=public
@@ -75,7 +75,7 @@ if [[ "$mode" = local ]]; then echo 'LOCAL TEST BUILD: ad-hoc signed, not notari
 ditto -c -k --sequesterRsrc --keepParent "$payload" "$archive"
 (cd "$output" && shasum -a 256 "$name.zip" > "$name.zip.sha256")
 echo "Packaged ($mode): $archive"
-# Upload-ready files: the archive, a curl installer and a Homebrew formula pinned to its checksum.
+# Upload-ready files: the archive and a curl installer pinned to its checksum.
 if [[ -n "${GITHUB_REPO:-}" ]]; then
   [[ "$GITHUB_REPO" =~ ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$ ]] || { echo 'GITHUB_REPO must be OWNER/NAME.' >&2; exit 1; }
   publish="$output/$name-publish"
@@ -88,8 +88,6 @@ if [[ -n "${GITHUB_REPO:-}" ]]; then
   }
   cp "$archive" "$archive.sha256" "$publish/"
   render packaging/get.sh "$publish/get.sh"
-  render packaging/terminal-mac.rb "$publish/terminal-mac.rb"
-  ! grep -q '@[A-Z_]*@' "$publish/get.sh" "$publish/terminal-mac.rb" || { echo 'Unfilled template placeholder.' >&2; exit 1; }
-  echo "Publish: GitHub release $tag in $GITHUB_REPO with every file in $publish except terminal-mac.rb;"
-  echo "         copy terminal-mac.rb to ${GITHUB_REPO%%/*}/homebrew-tap as Formula/terminal-mac.rb. See RELEASING.md."
+  ! grep -q '@[A-Z_]*@' "$publish/get.sh" || { echo 'Unfilled template placeholder.' >&2; exit 1; }
+  echo "Publish: GitHub release $tag in $GITHUB_REPO with every file in $publish. See RELEASING.md."
 fi

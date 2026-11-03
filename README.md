@@ -19,18 +19,16 @@ The guest is a separate Mac: it has its own apps, files, accounts and permission
 ## Install and run
 
 ```sh
-brew install govijr/tap/terminal-mac
-# or
 curl -fsSL https://github.com/govijr/terminal-mac/releases/latest/download/get.sh | bash
 ```
 
-Both install the same signed bundle. The curl installer verifies the archive's SHA-256 before installing. You can also extract a release ZIP and run `bash install.sh` from it.
+The installer downloads the latest release and verifies its SHA-256 before installing. You can also extract a release ZIP and run `bash install.sh` from it.
 
 The installer places one launcher in `~/.local/bin` and the bundled runtime under `~/.local/lib/terminal-mac`. Add `~/.local/bin` to your PATH to use simply `terminal-mac`. It needs no administrator rights and does not edit your shell configuration. `bash install.sh --prefix /absolute/path` selects another location.
 
 Running `terminal-mac` in an interactive terminal starts the guided flow. `terminal-mac up` does the same explicitly. It automatically downloads/caches a compatible Apple restore image, installs a virtual Mac, boots it and checks the guest helper. Later runs reuse the existing VM and reconnect. Unsupported terminals get the native desktop window.
 
-**Current status:** early release candidate. Releases are self-signed (no Apple notarization), which Homebrew and curl installs don't need. Live guest acceptance on a clean Mac is still pending.
+**Current status:** early release candidate. Releases are self-signed (no Apple notarization), which the curl installer doesn't need. Live guest acceptance on a clean Mac is still pending.
 
 ## Use with agents
 

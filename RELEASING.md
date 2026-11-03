@@ -1,6 +1,6 @@
 # Releasing terminal-mac
 
-The customer package contains precompiled signed apps and a user-local installer. Customers do not need Swift, Xcode, Homebrew, or a separately downloaded helper. macOS itself is fetched from Apple on first run, rather than bundled into the CLI archive.
+The customer package contains precompiled signed apps and a user-local installer. Customers do not need Swift, Xcode, or a separately downloaded helper. macOS itself is fetched from Apple on first run, rather than bundled into the CLI archive.
 
 ## Signing
 
@@ -12,7 +12,7 @@ bash scripts/create-signing-identity.sh   # once per Mac; does nothing if it alr
 
 **Back it up:** Keychain Access → My Certificates → "Govijr Code Signing" → Export. Use that backup to release from another Mac. A new certificate would make every user approve the guest permissions once more.
 
-Homebrew formulae and `curl` downloads are not quarantined, so Gatekeeper does not require notarization for them. A ZIP downloaded in a browser is quarantined and Gatekeeper will block it, so the README points users to Homebrew and curl.
+Files downloaded with `curl` are not quarantined, so Gatekeeper does not require notarization for them. A ZIP downloaded in a browser is quarantined and Gatekeeper will block it, so the README points users to the curl installer.
 
 ## Commands
 
@@ -55,30 +55,21 @@ The installed launcher points to a complete versioned app bundle under `PREFIX/l
 
 Before announcing production readiness, finish the live guest checklist in `docs/VALIDATION.md`, ideally on a separate clean Mac. Notarization verifies distribution signing; it does not prove VM boot, guest setup, privacy grants, input or terminal rendering work correctly.
 
-## Publishing (GitHub Releases, Homebrew, curl)
+## Publishing (GitHub Releases and curl)
 
 The repository is `GITHUB_REPO` in `scripts/release-config.sh` (default `govijr/terminal-mac`). With it set, `release.sh` also writes `dist/releases/NAME-publish/`, which contains:
 
 - the archive and its `.sha256`;
-- `get.sh`, the curl installer, pinned to this archive's URL and checksum;
-- `terminal-mac.rb`, the Homebrew formula, pinned the same way.
+- `get.sh`, the curl installer, pinned to this archive's URL and checksum.
 
-To publish a release:
+To publish, create a GitHub release tagged `vVERSION-BUILD` (for example `v0.2.0-4`) and attach every file in that folder: on github.com under Releases → Draft a new release, or with `gh release create v0.2.0-4 dist/releases/terminal-mac-0.2.0-4-macos-arm64-publish/* --title "terminal-mac 0.2.0"`.
 
-```sh
-# 1. GitHub release (tag vVERSION-BUILD) with the archive, its checksum and get.sh:
-gh release create v0.2.0-4 dist/releases/terminal-mac-0.2.0-4-macos-arm64-publish/{*.zip,*.sha256,get.sh} --title "terminal-mac 0.2.0"
-# 2. Homebrew tap: govijr/homebrew-tap, file Formula/terminal-mac.rb
-cp dist/releases/terminal-mac-0.2.0-4-macos-arm64-publish/terminal-mac.rb ../homebrew-tap/Formula/ && (cd ../homebrew-tap && git commit -am "terminal-mac 0.2.0-4" && git push)
-brew install govijr/tap/terminal-mac && brew test terminal-mac
-```
-
-Users then install with `brew install govijr/tap/terminal-mac`, or with `curl -fsSL https://github.com/govijr/terminal-mac/releases/latest/download/get.sh | bash`. Because `get.sh` is attached to each release, `latest/download/get.sh` always installs the newest release. Public releases are self-signed (see Signing).
+Users install with `curl -fsSL https://github.com/govijr/terminal-mac/releases/latest/download/get.sh | bash`. Because `get.sh` is attached to each release, `latest/download/get.sh` always installs the newest release. Public releases are self-signed (see Signing).
 
 The repository is also a Claude Code plugin marketplace. `.claude-plugin/plugin.json` registers the MCP server (`terminal-mac mcp`, which must be on PATH) and the skill in `skills/`. Users run `/plugin install terminal-mac --marketplace govijr/terminal-mac`. Check with `claude plugin validate .`, and keep `plugin.json`'s version in step with `VERSION`. The same `skills/` folder works with `npx skills add govijr/terminal-mac --skill terminal-mac`.
 
 ## Hosting and current release status
 
-Releases go to `govijr/terminal-mac` with the tap `govijr/homebrew-tap`. Release scripts produce local immutable artifacts and upload-ready files; they never publish. Once a download host is selected, publish the production ZIP and its checksum there; do not advertise a placeholder installation URL.
+Releases go to `govijr/terminal-mac`. Release scripts produce local immutable artifacts and upload-ready files; they never publish. Once a download host is selected, publish the production ZIP and its checksum there; do not advertise a placeholder installation URL.
 
 Public releases are self-signed and are not uploaded to Apple. `--notarized` is optional and has not been run.
