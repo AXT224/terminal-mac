@@ -11,7 +11,8 @@ final class TerminalViewer {
             (env["TERM_PROGRAM"] == "iTerm.app" || env["TERM_PROGRAM"] == "ghostty" || env["KITTY_WINDOW_ID"] != nil || env["TERM"]?.contains("kitty") == true)
     }
     /// `login`: nobody reads the mailbox, so the guest has no logged-in session (or no helper) yet.
-    private enum Link: Equatable { case connecting, live, snapshots, login, waiting(String) }
+    /// `permissions`: the helper runs but macOS has not allowed it to capture the screen yet.
+    private enum Link: Equatable { case connecting, live, snapshots, login, permissions, waiting(String) }
     private struct Layout: Equatable {
         let desktop: DesktopPlacement
         let border: Bool
@@ -54,6 +55,10 @@ final class TerminalViewer {
     private var fps = 0.0, fpsSample = (frames: 0, at: Date())
     /// The native window was opened from the viewer; it is hidden again once the guest connects.
     private var loginWindow = false
+    /// The helper's privacy permissions, from its status reply. Input needs Accessibility even while frames flow.
+    private var grants: (screen: Bool, input: Bool)?
+    private var grantsCheckedAt = Date.distantPast
+    private var inputBlocked: Bool { grants?.input == false }
     private var firstFrameShown = false
 
     /// Set once a guest helper has answered, so later runs of `up` can skip the native setup window.
@@ -158,6 +163,7 @@ final class TerminalViewer {
                 do {
                     let reply = try await mailbox.call(request)
                     failures = 0
+                    if grants?.input != true, Date().timeIntervalSince(grantsCheckedAt) > 2 { await checkGrants() }
                     connected()
                     let v = reply.values
                     if let w = Int(v["pointWidth"] ?? v["width"] ?? ""), let h = Int(v["pointHeight"] ?? v["height"] ?? ""),
@@ -185,27 +191,35 @@ final class TerminalViewer {
                         // An unread request means no helper is running; a read one means it is busy or stuck.
                         link = timeout.pickedUp ? .waiting("The guest helper is not responding. Reopen TerminalMacGuest in the VM") : .login
                     } else {
-                        link = .waiting(error.localizedDescription)
+                        // The helper answered with an error: most often a missing macOS permission.
+                        await checkGrants()
+                        link = grants.map { !$0.screen || !$0.input } == true ? .permissions : .waiting(error.localizedDescription)
                     }
-                    if link != .login { try? await Task.sleep(nanoseconds: min(2_000_000_000, UInt64(failures) * 300_000_000)) }
+                    if link != .login && link != .permissions { try? await Task.sleep(nanoseconds: min(2_000_000_000, UInt64(failures) * 300_000_000)) }
                 }
             }
         }
     }
 
-    /// The guest answered: remember that, and put away a login window the viewer opened.
+    private func checkGrants() async {
+        grantsCheckedAt = Date()
+        guard let values = try? await mailbox.call(Request(action: "status", timeout: 3)).values,
+              let screen = values["screenRecording"], let input = values["accessibility"] else { return }
+        grants = (screen == "true", input == "true")
+    }
+    /// The guest answered: remember that, and put away a window the viewer opened once nothing is left to do in it.
     private func connected() {
         if !FileManager.default.fileExists(atPath: Self.readyMarker(directory).path) {
             FileManager.default.createFile(atPath: Self.readyMarker(directory).path, contents: nil, attributes: [.posixPermissions: 0o600])
         }
-        guard loginWindow else { return }
+        guard loginWindow, !inputBlocked else { return }
         loginWindow = false
-        record("Signed in · back in the terminal", ok: true)
+        record("Guest ready · back in the terminal", ok: true)
         Task { @MainActor in _ = try? await host.call(Request(action: "hide", timeout: 5)) }
     }
     private func openLoginWindow() {
         loginWindow = true
-        record("Opened the VM window · it hides once you are signed in", ok: true)
+        record("Opened the VM window · it hides once the guest is ready", ok: true)
         Task { @MainActor in
             do { _ = try await host.call(Request(action: "show", timeout: 5)) }
             catch { loginWindow = false; record("Cannot open the VM window: \(error.localizedDescription)", ok: false) }
@@ -247,6 +261,13 @@ final class TerminalViewer {
 
     // MARK: Chrome
 
+    /// "✕ Screen Recording   ✓ Accessibility", from the helper's last status reply.
+    private var grantLine: [Span] {
+        func mark(_ name: String, _ granted: Bool?) -> [Span] {
+            [Span(granted == true ? "✓ " : "✕ ", granted == true ? Theme.green : Theme.red), Span(name, granted == true ? Theme.muted : Theme.text)]
+        }
+        return mark("Screen Recording", grants?.screen) + [Span("     ")] + mark("Accessibility", grants?.input)
+    }
     private func drawChrome() {
         guard let layout else { return }
         let now = Date(), stats = renderer.currentStats
@@ -265,10 +286,12 @@ final class TerminalViewer {
         case .live: [Span("● ", Theme.green), Span("live", Theme.bold + Theme.green), Span("  idle", Theme.faint)]
         case .snapshots: [Span("◐ ", Theme.yellow), Span("snapshots", Theme.yellow), Span(" · old guest helper: open My Shared Files/tools/TerminalMacGuest in the VM", Theme.faint)]
         case .login: [Span("◌ ", Theme.yellow), Span("at login screen", Theme.yellow)]
+        case .permissions: [Span("◌ ", Theme.yellow), Span("needs permissions", Theme.yellow)]
         case .waiting: [Span("\(spin) ", Theme.yellow), Span("waiting for guest", Theme.yellow)]
         }
         let latency = activity.last?.milliseconds.map { [Span("  \(Int($0.rounded())) ms", Theme.faint)] } ?? []
-        let right = (readOnly ? [Span("view only  ", Theme.faint)] : []) + state + latency + [Span(" ")]
+        let blocked = stats.frames > 0 && inputBlocked && !readOnly ? [Span("  ⚠ input needs Accessibility", Theme.yellow)] : []
+        let right = (readOnly ? [Span("view only  ", Theme.faint)] : []) + state + blocked + latency + [Span(" ")]
         var left = [Span(" ◆ terminal-mac ", Theme.badge), Span("  "), Span(machine.name, Theme.bold + Theme.text)]
         let detail = [Span("  macOS", Theme.muted), Span(" · \(points.width)×\(points.height)", Theme.faint),
                       Span(stats.sourceWidth > 0 ? " · \(stats.sourceWidth)×\(stats.sourceHeight) px" : "", Theme.faint)]
@@ -298,6 +321,14 @@ final class TerminalViewer {
                 [Span("Press ", Theme.muted), Span(" ⌃O ", Theme.key), Span(" to sign in, then it continues here", Theme.muted)], [],
                 [Span("Skip this every boot: in the VM, System Settings → Users & Groups", Theme.faint)],
                 [Span("→ Automatically log in as your user (needs FileVault off)", Theme.faint)]]
+            case .permissions:
+                [[Span("◆", Theme.accent)], [],
+                 [Span("The guest helper needs two macOS permissions inside the VM", Theme.bold + Theme.text)],
+                 grantLine,
+                 [],
+                 loginWindow ? [Span(spin + " ", Theme.yellow), Span("In the VM window, click the helper's Allow buttons and switch TerminalMacGuest on", Theme.text)]
+                     : [Span("Press ", Theme.muted), Span(" ⌃O ", Theme.key), Span(" and click the helper's Allow buttons; it continues here by itself", Theme.muted)],
+                 [Span("Already on? Remove TerminalMacGuest with − and allow it again", Theme.faint)]]
             case .waiting(let text): [[Span("◆", Theme.accent)], [], [Span(spin + " ", Theme.yellow), Span(text, Theme.text)], [Span("Ctrl+] exits", Theme.faint)]]
             default: [[Span("◆", Theme.accent)], [], [Span(spin + " ", Theme.yellow), Span("Connecting to \(machine.name)", Theme.text)], [Span("Ctrl+] exits", Theme.faint)]]
             }
@@ -319,8 +350,8 @@ final class TerminalViewer {
             let fitted = toast.truncated(max(4, cols - quitHint.width - 3))
             footer += fitted + [Span(String(repeating: " ", count: max(1, cols - 1 - fitted.width - quitHint.width)))]
         } else {
-            let hints = link == .login || link == .connecting || stats.frames == 0 ? [("⌃O", "open VM window")] :
-                readOnly ? [] : [("⌃G", "Mac shortcuts"), ("click", "click"), ("drag", "select"), ("wheel", "scroll"), ("type", "keyboard")]
+            let hints = link == .login || link == .connecting || link == .permissions || stats.frames == 0 ? [("⌃O", "open VM window")] :
+                readOnly ? [] : (inputBlocked ? [("⌃O", "allow Accessibility")] : []) + [("⌃G", "Mac shortcuts"), ("click", "click"), ("drag", "select"), ("wheel", "scroll"), ("type", "keyboard")]
             for (key, action) in hints {
                 let item = hint(key, action)
                 if footer.width + item.width + quitHint.width > cols { break }
@@ -431,7 +462,7 @@ final class TerminalViewer {
         func flush() { if !text.isEmpty { enqueue("type", ["text": text], label: Self.typeLabel(text)); text = "" } }
         for event in events {
             if case .quit = event { quit = true; return }
-            if case .key("ctrl+o") = event, link != .live, link != .snapshots { openLoginWindow(); continue }
+            if case .key("ctrl+o") = event, (link != .live && link != .snapshots) || inputBlocked { openLoginWindow(); continue }
             guard !readOnly else { continue }
             if palette {
                 switch event {
