@@ -1,0 +1,17 @@
+{
+  "name": "terminal-mac",
+  "owner": {
+    "name": "Govijr",
+    "url": "https://github.com/govijr"
+  },
+  "metadata": {
+    "description": "Computer use in a separate virtual Mac for coding agents."
+  },
+  "plugins": [
+    {
+      "name": "terminal-mac",
+      "source": "./",
+      "description": "Computer use in a separate virtual Mac, with MCP tools and an agent skill."
+    }
+  ]
+}
