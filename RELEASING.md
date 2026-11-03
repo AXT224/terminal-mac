@@ -18,14 +18,14 @@ Files downloaded with `curl` are not quarantined, so Gatekeeper does not require
 
 ```sh
 # Public release, self-signed (default):
-VERSION=0.2.0 BUILD_NUMBER=4 bash scripts/release.sh
+VERSION=0.2.0 BUILD_NUMBER=5 bash scripts/release.sh
 
 # Local-only ad-hoc test package:
-VERSION=0.2.0 BUILD_NUMBER=4 bash scripts/release.sh --local
+VERSION=0.2.0 BUILD_NUMBER=5 bash scripts/release.sh --local
 
 # Optional: Developer ID signed and notarized by Apple. The certificate carries the developer's legal
 # name, which `codesign -dvv` shows, so this is not the default.
-VERSION=0.2.0 BUILD_NUMBER=4 NOTARY_PROFILE=PROFILE bash scripts/release.sh --notarized
+VERSION=0.2.0 BUILD_NUMBER=5 NOTARY_PROFILE=PROFILE bash scripts/release.sh --notarized
 ```
 
 Increment the positive integer `BUILD_NUMBER` for each build: installed guest helpers update themselves when a higher build appears. `VERSION` uses `major.minor.patch`. Archives are immutable; the scripts refuse to replace an existing release with the same version and build.
@@ -62,7 +62,7 @@ The repository is `GITHUB_REPO` in `scripts/release-config.sh` (default `govijr/
 - the archive and its `.sha256`;
 - `get.sh`, the curl installer, pinned to this archive's URL and checksum.
 
-To publish, create a GitHub release tagged `vVERSION-BUILD` (for example `v0.2.0-4`) and attach every file in that folder: on github.com under Releases → Draft a new release, or with `gh release create v0.2.0-4 dist/releases/terminal-mac-0.2.0-4-macos-arm64-publish/* --title "terminal-mac 0.2.0"`.
+To publish, create a GitHub release tagged `vVERSION-BUILD` (for example `v0.2.0-5`) and attach every file in that folder: on github.com under Releases → Draft a new release, or with `gh release create v0.2.0-5 dist/releases/terminal-mac-0.2.0-5-macos-arm64-publish/* --title "terminal-mac 0.2.0"`.
 
 Users install with `curl -fsSL https://github.com/govijr/terminal-mac/releases/latest/download/get.sh | bash`. Because `get.sh` is attached to each release, `latest/download/get.sh` always installs the newest release. Public releases are self-signed (see Signing).
 
