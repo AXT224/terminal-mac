@@ -20,8 +20,13 @@ plan = json.load(open(sys.argv[1]))
 assert plan['name'] == 'test'
 assert plan['steps'][0] == 'download-or-reuse-apple-restore-image'
 PY
-if "$launcher" guest --check > "$work/guard.log" 2>&1; then echo 'Guest guard unexpectedly allowed the physical host.' >&2; exit 1; fi
-grep -q 'only runs inside a virtual Mac' "$work/guard.log"
+# The guard refuses physical Macs. CI runners are themselves virtual Macs, where it must allow.
+if [[ "$(sysctl -n hw.model)" == VirtualMac* ]]; then
+  "$launcher" guest --check | grep -q '^virtual-mac$' || { echo 'Guest guard rejected a virtual Mac.' >&2; exit 1; }
+else
+  if "$launcher" guest --check > "$work/guard.log" 2>&1; then echo 'Guest guard unexpectedly allowed the physical host.' >&2; exit 1; fi
+  grep -q 'only runs inside a virtual Mac' "$work/guard.log"
+fi
 "$launcher" skills get | grep -q '^name: terminal-mac$'
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | "$launcher" mcp | grep -q '"screenshot"'
 if "$launcher" up ../escape --plan > "$work/name.log" 2>&1; then echo 'Invalid machine name was accepted.' >&2; exit 1; fi
