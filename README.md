@@ -2,8 +2,6 @@
 
 A separate macOS desktop for computer-use agents, viewed and controlled from a terminal.
 
-**iOS simulators and iPhones:** see the sibling project [terminal-phone](https://github.com/govijr/terminal-phone).
-
 `terminal-mac` is an early release candidate for Apple silicon. Apple Virtualization runs a real macOS guest. A bundled helper **inside that guest** captures its screen and posts input events. A terminal viewer streams that screen using Kitty or iTerm2 graphics. Agent commands use the same helper without moving the physical Mac's pointer or changing its clipboard.
 
 The guest is a separate Mac: it has its own apps, files, accounts and permissions. It does not inherit your running host apps or signed-in sessions. The VM still consumes host CPU, memory and storage.
